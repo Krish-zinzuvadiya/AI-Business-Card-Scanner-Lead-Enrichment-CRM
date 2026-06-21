@@ -6,8 +6,7 @@ const { createWorker } = require("tesseract.js");
 //
 // Tesseract v5 CDN mode: pass a language string and set cachePath to a
 // writable tmp directory (/tmp is the only writable location on Vercel).
-const IS_PRODUCTION = process.env.NODE_ENV === "production";
-const USE_CDN = IS_PRODUCTION || process.env.TESSERACT_CDN === "true";
+const USE_CDN = process.env.TESSERACT_CDN === "true";
 
 async function recognizeImage(imagePath) {
   const workerOptions = USE_CDN
