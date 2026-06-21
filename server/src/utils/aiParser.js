@@ -105,6 +105,57 @@ async function parseLeadText(text) {
   }
 }
 
+async function parseLeadImagesWithOpenAI(imageUrls) {
+  try {
+    const contentPayload = [
+      {
+        type: "text",
+        text: "Extract business card lead data from these images. Also include a 'rawText' field containing all the raw text found on the card."
+      },
+      ...imageUrls.map((url) => ({
+        type: "image_url",
+        image_url: { url }
+      }))
+    ];
+
+    const response = await axios.post(
+      "https://api.openai.com/v1/chat/completions",
+      {
+        model: process.env.OPENAI_MODEL || "gpt-4o-mini",
+        response_format: { type: "json_object" },
+        temperature: 0,
+        messages: [
+          {
+            role: "system",
+            content:
+              "Extract business card lead data. Return compact JSON with personName, company, designation, email, emails, phone, phones, website, websites, address, and rawText. emails, phones, and websites must be arrays containing every visible value. rawText must contain all extracted text from the image. Use empty strings or empty arrays for missing fields."
+          },
+          {
+            role: "user",
+            content: contentPayload
+          }
+        ]
+      },
+      {
+        timeout: 30000,
+        headers: {
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+          "Content-Type": "application/json"
+        }
+      }
+    );
+
+    const content = response.data?.choices?.[0]?.message?.content || "{}";
+    const data = JSON.parse(content);
+    return sanitizeAiData(data, data.rawText || "");
+  } catch (error) {
+    console.warn("OpenAI Vision parser failed:", error.message);
+    throw error;
+  }
+}
+
 module.exports = {
-  parseLeadText
+  enabled,
+  parseLeadText,
+  parseLeadImagesWithOpenAI
 };

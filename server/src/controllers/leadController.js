@@ -4,7 +4,7 @@ const Lead = require("../models/Lead");
 const asyncHandler = require("../middleware/asyncHandler");
 const { extractTextFromImages } = require("../utils/ocr");
 const { extractEmails, extractPhones, extractWebsites, parseVCard, scoreLead } = require("../utils/parser");
-const { parseLeadText } = require("../utils/aiParser");
+const { enabled: aiParserEnabled, parseLeadText, parseLeadImagesWithOpenAI } = require("../utils/aiParser");
 const { enrichLeadData, needsEnrichment } = require("../utils/enrichment");
 const { createLeadsWorkbook } = require("../utils/excel");
 const { normalizeEmail, normalizePhone, normalizeUrl, toArray, unique, uniqueBy } = require("../utils/text");
@@ -211,8 +211,19 @@ const scanLead = asyncHandler(async (req, res) => {
     throw new Error("At least one card image is required");
   }
 
-  const rawText = await extractTextFromImages(files);
-  const parsed = await parseLeadText(rawText);
+  const imageUrls = files.map(uploadUrl).filter(Boolean);
+  let rawText = "";
+  let parsed = {};
+
+  if (aiParserEnabled() && imageUrls.every((url) => /^https?:\/\//.test(url))) {
+    // Blazing fast Vision AI path
+    parsed = await parseLeadImagesWithOpenAI(imageUrls);
+    rawText = parsed.rawText || "";
+  } else {
+    // Slow local OCR fallback
+    rawText = await extractTextFromImages(files);
+    parsed = await parseLeadText(rawText);
+  }
   const payload = sanitizeLeadPayload({
     ...parsed,
     notes: req.body.notes,
@@ -222,8 +233,8 @@ const scanLead = asyncHandler(async (req, res) => {
   });
   payload.event = req.params.eventId;
   payload.images = {
-    frontUrl: uploadUrl(req.files?.frontImage?.[0]),
-    backUrl: uploadUrl(req.files?.backImage?.[0])
+    frontUrl: imageUrls[0] || "",
+    backUrl: imageUrls[1] || ""
   };
 
   const duplicate = await findDuplicate(req.params.eventId, payload);
